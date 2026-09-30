@@ -1,0 +1,39 @@
+{
+ "users": [
+  {
+   "id": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+   "name": "prince gupta",
+   "email": "pg691734",
+   "salt": "7261e9205c44eb39",
+   "pass": "10517737150740a94bc3ceb89e45e7cfc3524c670ef37e586a0f931b8cc53dcb",
+   "role": "admin"
+  }
+ ],
+ "sessions": {
+  "09d4bff3327c931d03cc77a466bb9e70900a59ce1af7075e": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+  "b923e6a81b2e9549dcd1c9632f42eeba8767e597d4e15b2c": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+  "c8e11648f0293ba9f90146ea4b181bd323c3a4ec87faabcb": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+  "0ca00b618c57fd60eb995b1687fbe954dc584c3533023fef": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+  "8133e77855c75e24bc71d43b143768e68227c5e237a28ec8": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+  "da9b62ba481c61c4eed547178da6a0c59ad92fb3142a2e02": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+  "747ffe8a83894d270b332130ea61b2570207b9c137198002": "4b07f8f7-7bde-40cd-928e-13fbc278c74d"
+ },
+ "complaints": [
+  {
+   "id": "3a9413d2-8119-41ea-92d7-990fc53072e4",
+   "userId": "4b07f8f7-7bde-40cd-928e-13fbc278c74d",
+   "description": "garbage is overflowing in this area. waste has not been collected for several days and the area is becoming dirty. please arrange waste collection as soon as possible.",
+   "lat": 41.41961696821059,
+   "lng": 275.69334318843653,
+   "photo": "/uploads/39804b5a11e1df7a.jpeg",
+   "upvotes": 0,
+   "createdAt": "2026-09-30T10:39:51.664Z",
+   "category": "other",
+   "severity": "medium",
+   "autoResponse": "Thanks! Your report was received and our team will review it shortly.",
+   "zone": "Z41.42_275.69",
+   "status": "needs_review"
+  }
+ ],
+ "pickups": []
+}

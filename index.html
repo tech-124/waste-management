@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SafaiSetu — Smart Waste Management</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#f3f6f4;--ink:#13201d;--mute:#5d6d68;--line:#d5dfdb;--brand:#15694e;--brand-d:#0e4a37;--low:#5b9a7e;--medium:#d99a1e;--high:#dd6b20;--critical:#c8371f}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--brand-d);color:#fff;padding:.8rem 1.2rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+header b{font-size:1.25rem;margin-right:auto}nav{display:flex;gap:.3rem;flex-wrap:wrap}
+nav button{background:none;border:0;color:#cfe5db;padding:.45rem .8rem;border-radius:6px;font:inherit;cursor:pointer}
+nav button.on,nav button:hover{background:#ffffff22;color:#fff}
+main{max-width:1000px;margin:1.2rem auto;padding:0 1rem}h2{margin:.2rem 0 1rem}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:1rem;margin-bottom:.8rem}
+label{display:block;font-weight:600;margin:.7rem 0 .25rem}
+input,select,textarea{width:100%;padding:.6rem;border:1px solid var(--line);border-radius:6px;font:inherit}
+button.p{background:var(--brand);color:#fff;border:0;padding:.65rem 1.1rem;border-radius:6px;font:inherit;font-weight:600;cursor:pointer;margin-top:1rem}
+button.p:disabled{opacity:.5}button.g{background:none;border:1px solid var(--line);padding:.35rem .7rem;border-radius:6px;font:inherit;cursor:pointer}
+#map{height:320px;border-radius:10px;border:1px solid var(--line)}
+.tag{display:inline-block;padding:.1rem .55rem;border-radius:99px;font-size:.8rem;font-weight:600;color:#fff}
+.sev-low{background:var(--low)}.sev-medium{background:var(--medium)}.sev-high{background:var(--high)}.sev-critical{background:var(--critical)}
+.st{background:#e4ebe8;color:var(--ink)}.row{display:flex;gap:.8rem;align-items:flex-start}.row img{width:88px;height:88px;object-fit:cover;border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem}.mute{color:var(--mute);font-size:.9rem}
+.msg{padding:.7rem;border-radius:8px;background:#e3f3ea;margin-top:1rem}.err{background:#fbe4df}
+</style>
+</head>
+<body>
+<header><b>SafaiSetu</b><nav id="nav"></nav></header>
+<main id="app"></main>
+<script>
+const $ = (s) => document.querySelector(s), app = $("#app");
+let token = localStorage.t || "", me = null, view = "report";
+const CENTER = [26.4499, 80.3319]; // Kanpur — change if needed
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pretty = (s) => (s || "pending").replaceAll("_", " ");
+const say = (t, bad) => ($("#m").innerHTML = `<div class="msg ${bad ? "err" : ""}">${esc(t)}</div>`);
+
+async function api(p, body) {
+  const r = await fetch("/api/" + p, { method: body ? "POST" : "GET", headers: { "Content-Type": "application/json", Authorization: token }, body: body && JSON.stringify(body) });
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || "Something went wrong"); return d;
+}
+// shrink phone photos before upload
+const shrink = (f) => new Promise((res) => {
+  const i = new Image();
+  i.onload = () => { const k = Math.min(1, 1000 / Math.max(i.width, i.height)), c = document.createElement("canvas");
+    c.width = i.width * k; c.height = i.height * k; c.getContext("2d").drawImage(i, 0, 0, c.width, c.height); res(c.toDataURL("image/jpeg", 0.8)); };
+  i.src = URL.createObjectURL(f);
+});
+
+async function boot() { try { me = token ? await api("me") : null; } catch { me = null; } go(me ? "report" : "auth"); }
+function go(v) {
+  view = v;
+  const tabs = me ? [["report", "Report issue"], ["mine", "My complaints"], ["pickup", "Request pickup"], ["tips", "Awareness"], ...(me.role === "admin" ? [["admin", "Admin dashboard"]] : []), ["out", "Log out"]]
+    : [["tips", "Awareness"], ["auth", "Log in"]];
+  $("#nav").innerHTML = tabs.map(([k, l]) => `<button data-v="${k}" class="${k === v ? "on" : ""}">${l}</button>`).join("");
+  $("#nav").onclick = (e) => { const k = e.target.dataset.v; if (k === "out") { localStorage.removeItem("t"); token = ""; me = null; go("auth"); } else if (k) go(k); };
+  ({ auth: authView, report: reportView, mine: mineView, pickup: pickupView, tips: tipsView, admin: adminView })[v]();
+}
+
+function authView() {
+  app.innerHTML = `<h2>Welcome</h2><div class="card" style="max-width:420px"><p class="mute">The first account you create becomes the admin.</p>
+  <label>Full name (sign up only)</label><input id="nm"><label>Email</label><input id="em" type="email"><label>Password (6+ characters)</label><input id="pw" type="password">
+  <button class="p" id="li">Log in</button> <button class="g" id="su">Sign up</button><div id="m"></div></div>`;
+  const run = (path) => async () => {
+    try { const d = await api(path, { name: $("#nm").value, email: $("#em").value, password: $("#pw").value });
+      token = d.token; localStorage.t = token; me = d.user; go("report"); } catch (e) { say(e.message, 1); }
+  };
+  $("#li").onclick = run("login"); $("#su").onclick = run("register");
+}
+
+function reportView() {
+  app.innerHTML = `<h2>Report a waste issue</h2><div class="card"><label>Photo</label><input id="ph" type="file" accept="image/*">
+  <label>Location — tap the map to drop a pin</label><div id="map"></div><button class="g" id="loc" style="margin-top:.5rem">Use my current location</button>
+  <label>Description (optional)</label><textarea id="ds" rows="3" placeholder="e.g. Bin near the main gate has been overflowing for 2 days"></textarea>
+  <button class="p" id="go">Submit report</button><div id="m"></div></div>`;
+  const map = L.map("map").setView(CENTER, 14);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+  let pin = null, mk = null;
+  const setPin = (ll) => { pin = ll; mk ? mk.setLatLng(ll) : (mk = L.marker(ll).addTo(map)); };
+  map.on("click", (e) => setPin(e.latlng));
+  $("#loc").onclick = () => navigator.geolocation.getCurrentPosition((p) => { const ll = { lat: p.coords.latitude, lng: p.coords.longitude }; setPin(ll); map.setView(ll, 17); }, () => say("Location blocked. Tap the map instead.", 1));
+  $("#go").onclick = async () => {
+    const f = $("#ph").files[0];
+    if (!f) return say("Add a photo of the issue.", 1);
+    if (!pin) return say("Drop a pin on the map first.", 1);
+    $("#go").disabled = true; say("Uploading and analysing with AI…");
+    try {
+      const c = await api("complaints", { description: $("#ds").value, lat: pin.lat, lng: pin.lng, photo: await shrink(f) });
+      say(`Report received. ${c.autoResponse} (Category: ${pretty(c.category)}, severity: ${c.severity})`);
+      $("#ph").value = ""; $("#ds").value = "";
+    } catch (e) { say(e.message, 1); }
+    $("#go").disabled = false;
+  };
+}
+
+const cardHtml = (c, extra = "") => `<div class="card row"><img src="${esc(c.photo)}" alt="Complaint photo"><div style="flex:1">
+<div><span class="tag st">${pretty(c.status)}</span> ${c.severity ? `<span class="tag sev-${c.severity}">${c.severity}</span>` : ""} <b>${pretty(c.category)}</b>${c.upvotes ? ` <span class="mute">+${c.upvotes} merged</span>` : ""}</div>
+<div class="mute">${esc(c.description)}</div>${c.autoResponse ? `<div>${esc(c.autoResponse)}</div>` : ""}
+${c.proofPhoto ? `<div class="mute">Cleanup checked by AI: ${pretty(c.verification)} — <a href="${esc(c.proofPhoto)}" target="_blank">proof photo</a></div>` : ""}
+<div class="mute">${new Date(c.createdAt).toLocaleString()} · zone ${esc(c.zone || "—")}</div>${extra}</div></div>`;
+
+async function mineView() {
+  app.innerHTML = `<h2>My complaints</h2><div id="l" class="mute">Loading…</div>`;
+  const d = await api("complaints/mine");
+  $("#l").outerHTML = d.length ? d.map((c) => cardHtml(c)).join("") : `<div class="card">Nothing reported yet. Use "Report issue" to file your first complaint.</div>`;
+}
+
+async function pickupView() {
+  app.innerHTML = `<h2>Request a waste pickup</h2><div class="card" style="max-width:520px"><label>Waste type</label>
+  <select id="wt"><option>Household</option><option>Bulk / furniture</option><option>E-waste</option><option>Garden waste</option><option>Construction debris</option></select>
+  <label>Address</label><input id="ad"><label>Preferred date</label><input id="dt" type="date" min="${new Date().toISOString().slice(0, 10)}">
+  <button class="p" id="go">Request pickup</button><div id="m"></div></div><div id="l"></div>`;
+  const list = async () => ($("#l").innerHTML = (await api("pickups/mine")).map((p) => `<div class="card"><b>${esc(p.wasteType)}</b> on ${p.date} <span class="tag st">${p.status}</span><div class="mute">${esc(p.address)}</div></div>`).join(""));
+  $("#go").onclick = async () => { try { await api("pickups", { wasteType: $("#wt").value, address: $("#ad").value, date: $("#dt").value }); say("Pickup requested."); list(); } catch (e) { say(e.message, 1); } };
+  list();
+}
+
+function tipsView() {
+  const t = [["Wet waste (green bin)", "Food scraps, vegetable peels, tea leaves. Compost it if you can."], ["Dry waste (blue bin)", "Paper, cardboard, plastic, metal, glass. Rinse containers first."],
+    ["Hazardous waste (red bin)", "Batteries, bulbs, expired medicine, paint. Never mix with household waste."], ["E-waste", "Give old phones and chargers to authorised collectors. Do not burn them."],
+    ["Sanitary waste", "Wrap in paper and mark it so sanitation workers can handle it safely."], ["Never dump on roads", "Illegal dumping blocks drains and invites fines. Report it here instead."]];
+  app.innerHTML = `<h2>Segregate right, waste less</h2><div class="grid">${t.map(([h, b]) => `<div class="card"><b>${h}</b><p class="mute">${b}</p></div>`).join("")}</div>`;
+}
+
+const SEV = { low: "#5b9a7e", medium: "#d99a1e", high: "#dd6b20", critical: "#c8371f" };
+async function adminView() {
+  app.innerHTML = `<h2>Admin dashboard</h2><div id="map"></div><div id="hs" class="mute" style="margin:.6rem 0"></div>
+  <select id="fs" style="max-width:240px"><option value="">All statuses</option>${["routed", "in_progress", "needs_review", "resolved"].map((s) => `<option value="${s}">${pretty(s)}</option>`).join("")}</select><div id="l" style="margin-top:.8rem"></div>`;
+  const data = await api("complaints"), rank = { critical: 0, high: 1, medium: 2, low: 3 };
+  const draw = () => {
+    const f = $("#fs").value, rows = data.filter((c) => !f || c.status === f).sort((a, b) => (rank[a.severity] ?? 4) - (rank[b.severity] ?? 4));
+    $("#l").innerHTML = rows.length ? rows.map((c) => cardHtml(c, c.status === "resolved" ? "" : `<div style="margin-top:.5rem"><span class="mute">Cleanup proof: </span>
+      <input type="file" accept="image/*" data-proof="${c.id}" style="width:auto"> <select data-st="${c.id}" style="width:auto"><option value="">Set status…</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option></select></div>`)).join("")
+      : `<div class="card">No complaints match this filter.</div>`;
+  };
+  $("#fs").onchange = draw; draw();
+  $("#l").onchange = async (e) => {
+    const id = e.target.dataset.proof || e.target.dataset.st;
+    try {
+      if (e.target.dataset.st && e.target.value) { await api(`complaints/${id}/status`, { status: e.target.value }); return adminView(); }
+      if (e.target.dataset.proof && e.target.files[0]) {
+        e.target.disabled = true;
+        const r = await api(`complaints/${id}/proof`, { photo: await shrink(e.target.files[0]) });
+        alert(`AI verdict: ${pretty(r.verdict)} — ${r.reason}\nStatus is now: ${pretty(r.status)}`); adminView();
+      }
+    } catch (err) { alert(err.message); }
+  };
+  const map = L.map("map").setView(CENTER, 13);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap" }).addTo(map);
+  const open = data.filter((c) => c.status !== "resolved"), pts = [];
+  open.forEach((c) => { pts.push([c.lat, c.lng]); L.circleMarker([c.lat, c.lng], { radius: 9, color: "#fff", weight: 2, fillColor: SEV[c.severity] || "#888", fillOpacity: 1 }).addTo(map).bindPopup(pretty(c.category)); });
+  if (pts.length) map.fitBounds(pts, { maxZoom: 16, padding: [30, 30] });
+  const cells = {}; // hotspot = 3+ open issues in the same ~500 m grid cell
+  open.filter((c) => !c.duplicateOf).forEach((c) => (cells[`${Math.round(c.lat / 0.005)}_${Math.round(c.lng / 0.005)}`] ??= []).push(c));
+  const hot = Object.values(cells).filter((a) => a.length >= 3);
+  hot.forEach((a) => L.circle([a.reduce((s, c) => s + c.lat, 0) / a.length, a.reduce((s, c) => s + c.lng, 0) / a.length], { radius: 300, color: "#c8371f", fillOpacity: 0.18, weight: 1 }).addTo(map));
+  $("#hs").textContent = `${open.length} open complaints · ${hot.length} hotspot${hot.length === 1 ? "" : "s"} (3+ open issues within ~500 m)`;
+}
+boot();
+</script>
+</body>
+</html>
